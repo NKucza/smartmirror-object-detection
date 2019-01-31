@@ -1,11 +1,4 @@
-/* global Module */
 
-/* Magic Mirror
- * Module: MMM-Facial-Recognition
- *
- * By Paul-Vincent Roll http://paulvincentroll.com
- * MIT Licensed.
- */
 
 
 Module.register('smartmirror-object-detection',{

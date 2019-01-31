@@ -9,6 +9,9 @@ import time , threading
 import json, sys, os, signal
 import numpy as np
 
+if os.path.exists("/tmp/object_detection_captions") is True:
+	os.remove("/tmp/object_detection_captions")
+
 class BOX(Structure):
     _fields_ = [("x", c_float),
                 ("y", c_float),
@@ -115,6 +118,10 @@ predict_image.restype = POINTER(c_float)
 def shutdown(self, signum):
 	out_cap.release()
 	#out.release()
+
+	if os.path.exists("/tmp/object_detection_captions") is True:
+		os.remove("/tmp/object_detection_captions")
+
 	to_node("status", 'Shutdown: Done.')
 	exit()
 
@@ -149,7 +156,7 @@ if __name__ == "__main__":
 	to_node("status", "Object detection is starting...")
 
 
-	cap = cv2.VideoCapture("shmsrc socket-path=/tmp/camera_image ! video/x-raw, format=BGR ,width=1080,height=1920,framerate=30/1 ! videoconvert ! video/x-raw, format=BGR ! appsink")
+	cap = cv2.VideoCapture("shmsrc socket-path=/tmp/camera_image ! video/x-raw, format=BGR ,width=1080,height=1920,framerate=30/1 ! videoconvert ! video/x-raw, format=BGR ! appsink", cv2.CAP_GSTREAMER)
 	#cap = cv2.VideoCapture(3)
 	#cap.set(3,1920);
 	#cap.set(4,1080);
@@ -220,7 +227,7 @@ if __name__ == "__main__":
 
 					cv2.circle(image_cap , (int(b.x), int(b.y))  , 5,(55,255,55), 5)
 					cv2.rectangle(image_cap,(int(b.x-b.w/2),int(b.y-b.h/2)),(int(b.x+b.w/2),int(b.y+b.h/2)) ,(55,255,55), 3)
-					cv2.putText(image_cap, str(nameTag), (int(b.x), int(b.y)), cv2.FONT_HERSHEY_DUPLEX, fontScale=1, color=(55,255,55), thickness=3)
+					cv2.putText(image_cap, nameTag.decode('utf-8') , (int(b.x), int(b.y)), cv2.FONT_HERSHEY_DUPLEX, fontScale=1, color=(55,255,55), thickness=3)
 
 		free_image(im)
 		free_detections(dets, num)
@@ -239,6 +246,6 @@ if __name__ == "__main__":
 
 		out_cap.write(image_cap)
 	
-		cv2.waitKey(33)
+		#cv2.waitKey(33)
 
 

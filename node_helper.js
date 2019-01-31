@@ -1,7 +1,7 @@
 'use strict';
 const NodeHelper = require('node_helper');
 
-const PythonShell = require('python-shell');
+const {PythonShell} = require('python-shell');
 var pythonStarted = false
 
 module.exports = NodeHelper.create({
@@ -10,9 +10,9 @@ module.exports = NodeHelper.create({
 		const self = this;		
 
 		
-		this.pyshell = new PythonShell('modules/' + this.name + '/yolo-object-detector/object_detection.py', {pythonPath: 'python',  args: [JSON.stringify(this.config)]});
+		self.pyshell = new PythonShell('modules/' + this.name + '/yolo-object-detector/object_detection.py', {pythonPath: 'python3',  args: [JSON.stringify(this.config)]});
     		
-		this.pyshell.on('message', function (message_string) {
+		self.pyshell.on('message', function (message_string) {
 			try{
 				var message = JSON.parse(message_string)
            		//console.log("[MSG " + self.name + "] " + message);
@@ -36,10 +36,11 @@ module.exports = NodeHelper.create({
 
   	// Subclass socketNotificationReceived received.
   	socketNotificationReceived: function(notification, payload) {
+		const self = this;	
 		if(notification === 'ObjectDetection_SetFPS') {
 			if(pythonStarted) {
                 var data = {"FPS": payload}
-                this.pyshell.send(data,{mode: 'json'});
+                self.pyshell.send(JSON.stringify(data));
 
             }
         }else if(notification === 'OBJECT_DETECITON_CONFIG') {
@@ -49,5 +50,16 @@ module.exports = NodeHelper.create({
         		this.python_start();
       		};
     	};
-  	}
+  	},
+
+	stop: function() {
+		const self = this;
+		self.pyshell.childProcess.kill('SIGKILL');
+		self.pyshell.end(function (err) {
+           	if (err){
+        		//throw err;
+    		};
+    		console.log('finished');
+		});
+	}
 });
