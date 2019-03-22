@@ -155,9 +155,8 @@ if __name__ == "__main__":
 
 	to_node("status", "Object detection is starting...")
 
-
 	cap = cv2.VideoCapture("shmsrc socket-path=/tmp/camera_image ! video/x-raw, format=BGR ,width=1080,height=1920,framerate=30/1 ! videoconvert ! video/x-raw, format=BGR ! appsink", cv2.CAP_GSTREAMER)
-	#cap = cv2.VideoCapture(3)
+	#cap = cv2.VideoCapture(2)
 	#cap.set(3,1920);
 	#cap.set(4,1080);
 	#cv2.namedWindow("object detection", cv2.WINDOW_NORMAL)
