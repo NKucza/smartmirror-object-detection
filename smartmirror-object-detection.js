@@ -1,5 +1,11 @@
-
-
+/**
+ * @file smartmirror-object-detection.js
+ *
+ * @author nkucza
+ * @license MIT
+ *
+ * @see  https://github.com/NKucza/smartmirror-object-detection
+ */
 
 Module.register('smartmirror-object-detection',{
 
