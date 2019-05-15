@@ -8,112 +8,10 @@ import cv2
 import time , threading
 import json, sys, os, signal
 import numpy as np
+import darknet
 
 if os.path.exists("/tmp/object_detection_captions") is True:
 	os.remove("/tmp/object_detection_captions")
-
-class BOX(Structure):
-    _fields_ = [("x", c_float),
-                ("y", c_float),
-                ("w", c_float),
-                ("h", c_float)]
-
-class DETECTION(Structure):
-    _fields_ = [("bbox", BOX),
-                ("classes", c_int),
-                ("prob", POINTER(c_float)),
-                ("mask", POINTER(c_float)),
-                ("objectness", c_float),
-                ("sort_class", c_int)]
-
-
-class IMAGE(Structure):
-    _fields_ = [("w", c_int),
-                ("h", c_int),
-                ("c", c_int),
-                ("data", POINTER(c_float))]
-
-class METADATA(Structure):
-    _fields_ = [("classes", c_int),
-                ("names", POINTER(c_char_p))]
-
-lib = CDLL("darknet.so", RTLD_GLOBAL)
-
-lib.network_width.argtypes = [c_void_p]
-lib.network_width.restype = c_int
-lib.network_height.argtypes = [c_void_p]
-lib.network_height.restype = c_int
-
-predict = lib.network_predict
-predict.argtypes = [c_void_p, POINTER(c_float)]
-predict.restype = POINTER(c_float)
-
-set_gpu = lib.cuda_set_device
-set_gpu.argtypes = [c_int]
-
-make_image = lib.make_image
-make_image.argtypes = [c_int, c_int, c_int]
-make_image.restype = IMAGE
-
-get_network_boxes = lib.get_network_boxes
-get_network_boxes.argtypes = [c_void_p, c_int, c_int, c_float, c_float, POINTER(c_int), c_int, POINTER(c_int), c_int]
-get_network_boxes.restype = POINTER(DETECTION)
-
-make_network_boxes = lib.make_network_boxes
-make_network_boxes.argtypes = [c_void_p]
-make_network_boxes.restype = POINTER(DETECTION)
-
-free_detections = lib.free_detections
-free_detections.argtypes = [POINTER(DETECTION), c_int]
-
-free_ptrs = lib.free_ptrs
-free_ptrs.argtypes = [POINTER(c_void_p), c_int]
-
-network_predict = lib.network_predict
-network_predict.argtypes = [c_void_p, POINTER(c_float)]
-
-reset_rnn = lib.reset_rnn
-reset_rnn.argtypes = [c_void_p]
-
-load_net = lib.load_network
-load_net.argtypes = [c_char_p, c_char_p, c_int]
-load_net.restype = c_void_p
-
-load_net_custom = lib.load_network_custom
-load_net_custom.argtypes = [c_char_p, c_char_p, c_int, c_int]
-load_net_custom.restype = c_void_p
-
-do_nms_obj = lib.do_nms_obj
-do_nms_obj.argtypes = [POINTER(DETECTION), c_int, c_int, c_float]
-
-do_nms_sort = lib.do_nms_sort
-do_nms_sort.argtypes = [POINTER(DETECTION), c_int, c_int, c_float]
-
-free_image = lib.free_image
-free_image.argtypes = [IMAGE]
-
-letterbox_image = lib.letterbox_image
-letterbox_image.argtypes = [IMAGE, c_int, c_int]
-letterbox_image.restype = IMAGE
-
-load_meta = lib.get_metadata
-lib.get_metadata.argtypes = [c_char_p]
-lib.get_metadata.restype = METADATA
-
-load_image = lib.load_image_color
-load_image.argtypes = [c_char_p, c_int, c_int]
-load_image.restype = IMAGE
-
-array_to_image = lib.array_to_image
-array_to_image.argtypes = [POINTER(c_char),c_int,c_int,c_int]
-array_to_image.restype = IMAGE
-
-rgbgr_image = lib.rgbgr_image
-rgbgr_image.argtypes = [IMAGE]
-
-predict_image = lib.network_predict_image
-predict_image.argtypes = [c_void_p, IMAGE]
-predict_image.restype = POINTER(c_float)
 
 def shutdown(self, signum):
 	out_cap.release()
@@ -144,6 +42,13 @@ def check_stdin():
 		if 'FPS' in data:
 			FPS = data['FPS']
 
+def convertBack(x, y, w, h):
+    xmin = int(round(x - (w / 2)))
+    xmax = int(round(x + (w / 2)))
+    ymin = int(round(y - (h / 2)))
+    ymax = int(round(y + (h / 2)))
+    return xmin, ymin, xmax, ymax
+
 if __name__ == "__main__":
 
 
@@ -159,15 +64,15 @@ if __name__ == "__main__":
 	#cap = cv2.VideoCapture(2)
 	#cap.set(3,1920);
 	#cap.set(4,1080);
-	#cv2.namedWindow("object detection", cv2.WINDOW_NORMAL)
+	cv2.namedWindow("object detection", cv2.WINDOW_NORMAL)
 
-	set_gpu(1)
+	darknet.set_gpu(1)
 
 	configPath = "cfg/yolov3.cfg"
 	weightPath = "data/yolov3.weights"
 	metaPath = "data/coco.data"
 
-	thresh = 0.3
+	thresh = 0.7
 	hier_thresh=.5
 	nms=.45 
 	debug= False
@@ -184,11 +89,19 @@ if __name__ == "__main__":
 	t = threading.Thread(target=check_stdin)
 	t.start()
 	
-	net = load_net_custom(configPath.encode("ascii"), weightPath.encode("ascii"), 0, 1)  # batch size = 1
-	meta = load_meta(metaPath.encode("ascii"))
+	netMain = darknet.load_net_custom(configPath.encode("ascii"), weightPath.encode("ascii"), 0, 1)  # batch size = 1
+	metaMain = darknet.load_meta(metaPath.encode("ascii"))
 
-	c_char_p = POINTER(c_char)
+	    # Create an image we reuse for each detect
+	darknet_image = darknet.make_image(darknet.network_width(netMain), darknet.network_height(netMain),3)
+        
 
+	#raster for hand tracing.. here the image resolution 
+	horizontal_division = 36.0
+	vertical_division =  64.0
+
+	detectionArray = np.zeros((int(vertical_division),int(horizontal_division),metaMain.classes),dtype=np.uint8)
+	
 	while True:
 
 		start_time = time.time()
@@ -197,41 +110,63 @@ if __name__ == "__main__":
 		if ret is False:
 			continue
 
+		frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+		frame_resized = cv2.resize(frame_rgb,
+                                   (darknet.network_width(netMain),
+                                    darknet.network_height(netMain)),
+                                   interpolation=cv2.INTER_LINEAR)
+
 		image_cap = np.zeros((1920,1080,3), np.uint8)
 
-		#data = image.astype(numpy.int8)
-		data_p = frame.ctypes.data_as(c_char_p)
+		darknet.copy_image_from_bytes(darknet_image,frame_resized.tobytes())
 
-		im = array_to_image(data_p, frame.shape[0],frame.shape[1],frame.shape[2])
+		dets = darknet.detect_image(netMain, metaMain, darknet_image, thresh=0.25)
 
-		num = c_int(0)
-		pnum = pointer(num)
+		detectionArray = np.where(detectionArray >0 , detectionArray -1 , 0)
 	
-		predict_image(net, im)
-		dets = get_network_boxes(net, im.w, im.h, thresh, hier_thresh, None, 0, pnum, 0)
+		for det in dets:
+			x, y, w, h = det[2][0],\
+            det[2][1],\
+            det[2][2],\
+            det[2][3]
 
-		num = pnum[0]
-		if nms:
-			do_nms_sort(dets, num, meta.classes, nms)
+			xrel = int(x / darknet.network_width(netMain) * horizontal_division)
+			yrel = int(y / darknet.network_height(netMain) * vertical_division)
+			
 
-		res = []
-	
-		for j in range(num):
-			for i in range(meta.classes):
-				if dets[j].prob[i] > 0:
-					b = dets[j].bbox
-					nameTag = meta.names[i]
+			x = x / darknet.network_width(netMain) * 1080
+			y = y / darknet.network_height(netMain) * 1920
+			w = w / darknet.network_width(netMain) * 1080
+			h = h / darknet.network_height(netMain) * 1920
 
-					#cv2.circle(frame , (int(b.x), int(b.y))  , 5,(55,255,55), 5)
-					#cv2.rectangle(frame,(int(b.x-b.w/2),int(b.y-b.h/2)),(int(b.x+b.w/2),int(b.y+b.h/2)) ,(55,255,55), 3)
-					#cv2.putText(frame, str(nameTag), (int(b.x), int(b.y)), cv2.FONT_HERSHEY_DUPLEX, fontScale=1, color=(55,255,55), thickness=3)				
+			xmin, ymin, xmax, ymax = convertBack(
+            float(x), float(y), float(w), float(h))
+			pt1 = (xmin, ymin)
+			pt2 = (xmax, ymax)
 
-					cv2.circle(image_cap , (int(b.x), int(b.y))  , 5,(55,255,55), 5)
-					cv2.rectangle(image_cap,(int(b.x-b.w/2),int(b.y-b.h/2)),(int(b.x+b.w/2),int(b.y+b.h/2)) ,(55,255,55), 3)
-					cv2.putText(image_cap, nameTag.decode('utf-8') , (int(b.x), int(b.y)), cv2.FONT_HERSHEY_DUPLEX, fontScale=1, color=(55,255,55), thickness=3)
+			for j in range(metaMain.classes):
+				if det[0] == metaMain.names[j]:
+					i = j
+					break
+			
+			cv2.circle(frame , (int(x), int(y))  , 5,(55,255,55), 5)
+			cv2.rectangle(frame,pt1,pt2,(55,255,55), 3)
+			cv2.putText(frame, det[0].decode('utf-8'), (pt1[0], pt1[1] - 5), cv2.FONT_HERSHEY_DUPLEX, fontScale=1, color=(55,255,55), thickness=3)
 
-		free_image(im)
-		free_detections(dets, num)
+			cv2.circle(image_cap , (int(x), int(y))  , 5,(55,255,55), 5)
+			cv2.rectangle(image_cap,pt1,pt2,(55,255,55), 3)
+			cv2.putText(image_cap, det[0].decode('utf-8'), (pt1[0], pt1[1] - 5), cv2.FONT_HERSHEY_DUPLEX, fontScale=1, color=(55,255,55), thickness=3)
+
+
+			detectionArray[yrel,xrel,i] += 2
+
+			if detectionArray[yrel,xrel,i] == 2 * FPS:
+				detectionArray[yrel,xrel,i] = 0			
+			if detectionArray[yrel,xrel,i] == FPS:
+				wrel = w / darknet.network_width(netMain)
+				hrel = h / darknet.network_height(netMain)
+				to_node("detected",{"name": str(det[0].decode("utf-8")), "center": (float("{0:.5f}".format(xrel/horizontal_division )),float("{0:.5f}".format(yrel/vertical_division))),"box": (float("{0:.5f}".format(hrel)),float("{0:.5f}".format(wrel)))})
+		
 
 		delta = time.time() - start_time
 		if (1.0 / FPS) - delta > 0:
@@ -240,13 +175,13 @@ if __name__ == "__main__":
 		else:
 			fps_cap = 1. / delta
 
-		#cv2.putText(frame, str(round(fps_cap)) + " FPS", (50, 100), cv2.FONT_HERSHEY_DUPLEX, fontScale=1, color=(50,255,50), thickness=3)
+		cv2.putText(frame, str(round(fps_cap)) + " FPS", (50, 100), cv2.FONT_HERSHEY_DUPLEX, fontScale=1, color=(50,255,50), thickness=3)
 		cv2.putText(image_cap, str(round(fps_cap)) + " FPS", (50, 100), cv2.FONT_HERSHEY_DUPLEX, fontScale=1, color=(50,255,50), thickness=3)
 
-		#cv2.imshow("object detection", frame)
+		cv2.imshow("object detection", frame)
 
 		out_cap.write(image_cap)
 	
-		#cv2.waitKey(33)
+		cv2.waitKey(33)
 
 

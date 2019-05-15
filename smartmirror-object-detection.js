@@ -30,8 +30,9 @@ Module.register('smartmirror-object-detection',{
 
 
 	socketNotificationReceived: function(notification, payload) {
-		if(notification === 'OD_OBJECT_FOUND') {
-      
+		if(notification === 'detected') {
+			this.sendNotification('OBJECT_DETECTED', payload);
+			//console.log("[" + this.name + "] " + "object detected: " + payload);
         };
 	}
 });

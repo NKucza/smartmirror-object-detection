@@ -10,22 +10,18 @@ module.exports = NodeHelper.create({
 		const self = this;		
 
 		
-		self.pyshell = new PythonShell('modules/' + this.name + '/yolo-object-detector/object_detection.py', {pythonPath: 'python3',  args: [JSON.stringify(this.config)]});
+		self.obj_pyshell = new PythonShell('modules/' + this.name + '/yolo-object-detector/object_detection.py', {pythonPath: 'python3',  args: [JSON.stringify(this.config)]});
     		
-		self.pyshell.on('message', function (message_string) {
+		self.obj_pyshell.on('message', function (message) {
 			try{
-				var message = JSON.parse(message_string)
+				var parsed_message = JSON.parse(message)
            		//console.log("[MSG " + self.name + "] " + message);
-				if (message.hasOwnProperty('status')){
-					console.log("[" + self.name + "] " + message.status);
+				if (parsed_message.hasOwnProperty('status')){
+					console.log("[" + self.name + "] " + parsed_message.status);
   				}
-				if (message.hasOwnProperty('detected_object')){
-					console.log("[" + self.name + "] detected object: " + message.detected_object.name + " with confidence " + message.detected_object.confidence + " in area "  + message.detected_object.bounds);
-					self.sendSocketNotification('OD_OBJECT_FOUND', message.detected_object);
-				}
-				if (message.hasOwnProperty('lost_object')){
-					console.log("[" + self.name + "] lost object: " + message.lost_object.name + " with confidence " + message.lost_object.confidence + " in area " + message.lost_object.bounds);
-					self.sendSocketNotification('OD_OBJECT_LOST', message.lost_object);
+				if (parsed_message.hasOwnProperty('detected')){
+					//console.log("[" + self.name + "] detected object: " + parsed_message.detected.name + " center in "  + parsed_message.detected.center);
+					self.sendSocketNotification('detected', parsed_message.detected);
 				}
 			}
 			catch(err) {
@@ -40,7 +36,7 @@ module.exports = NodeHelper.create({
 		if(notification === 'ObjectDetection_SetFPS') {
 			if(pythonStarted) {
                 var data = {"FPS": payload}
-                self.pyshell.send(JSON.stringify(data));
+                self.obj_pyshell.send(JSON.stringify(data));
 
             }
         }else if(notification === 'OBJECT_DETECITON_CONFIG') {
@@ -54,8 +50,8 @@ module.exports = NodeHelper.create({
 
 	stop: function() {
 		const self = this;
-		self.pyshell.childProcess.kill('SIGKILL');
-		self.pyshell.end(function (err) {
+		self.obj_pyshell.childProcess.kill('SIGKILL');
+		self.obj_pyshell.end(function (err) {
            	if (err){
         		//throw err;
     		};
